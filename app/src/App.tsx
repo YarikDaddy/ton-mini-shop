@@ -19,8 +19,9 @@ function App() {
   const isConnected = Boolean(walletAddress)
 
   const [tonConnectUI] = useTonConnectUI()
-  // status хранит код товара, который сейчас оплачивается, и текст состояния
   const [status, setStatus] = useState('')
+  // id товара, который сейчас оплачивается (или null) — чтобы блокировать кнопки
+  const [pendingId, setPendingId] = useState<string | null>(null)
 
   const connectedNetwork =
     wallet?.account.chain === CHAIN.TESTNET
@@ -31,6 +32,7 @@ function App() {
 
   async function buy(product: Product) {
     setStatus(`⏳ Оплата «${product.name}»…`)
+    setPendingId(product.id) // блокируем кнопки на время оплаты
     try {
       // Метка заказа: что купили + кому выдать (Telegram ID покупателя).
       // По ней бот на 5c поймёт заказ, читая комментарий из блокчейна.
@@ -58,10 +60,16 @@ function App() {
           },
         ],
       })
-      setStatus(`✅ Оплачено: «${product.name}». Метка: ${comment}`)
+      // Подсказка после оплаты: товар выдаёт бот. Без Telegram (userId=0) не выйдет.
+      const tail = userId
+        ? 'Товар придёт в этот бот — проверь чат с ним. 📩'
+        : '⚠️ Открой магазин через Telegram, иначе бот не сможет выдать товар.'
+      setStatus(`✅ Оплачено: «${product.name}». ${tail}`)
     } catch (e) {
       const err = e as Error
       setStatus(`❌ Не прошло: ${err.message || err.name || 'неизвестная ошибка'}`)
+    } finally {
+      setPendingId(null) // разблокируем кнопки в любом случае
     }
   }
 
@@ -89,7 +97,13 @@ function App() {
           {/* Рисуем карточку под каждый товар из массива PRODUCTS */}
           <div className="shop">
             {PRODUCTS.map((product) => (
-              <ProductCard key={product.id} product={product} onBuy={buy} />
+              <ProductCard
+                key={product.id}
+                product={product}
+                onBuy={buy}
+                disabled={pendingId !== null} // пока идёт любая оплата — все кнопки заблокированы
+                loading={pendingId === product.id} // на этой карточке показываем «…»
+              />
             ))}
           </div>
 
@@ -105,9 +119,13 @@ function App() {
 function ProductCard({
   product,
   onBuy,
+  disabled,
+  loading,
 }: {
   product: Product
   onBuy: (p: Product) => void
+  disabled: boolean
+  loading: boolean
 }) {
   return (
     <div className="product">
@@ -116,8 +134,12 @@ function ProductCard({
         <div className="product__name">{product.name}</div>
         <div className="product__desc">{product.description}</div>
       </div>
-      <button className="product__buy" onClick={() => onBuy(product)}>
-        {product.price} TON
+      <button
+        className="product__buy"
+        onClick={() => onBuy(product)}
+        disabled={disabled}
+      >
+        {loading ? '…' : `${product.price} TON`}
       </button>
     </div>
   )

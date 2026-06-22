@@ -141,6 +141,11 @@
   opacity: 0.8;
 }
 
+.product__buy:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .hint,
 .footnote {
   margin: 0;
