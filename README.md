@@ -8,6 +8,28 @@ Built as a real, end-to-end demonstration of accepting crypto payments inside Te
 
 ---
 
+## 🎬 Demo
+
+<p align="center">
+  <img src="docs/demo.gif" alt="TON Mini-Shop — browse → pay in TON → paid" width="320" />
+</p>
+
+Browse the catalog → pay in TON → the order is verified **on-chain** and the bot delivers the product in chat.
+
+| Storefront | Delivered in chat |
+|---|---|
+| <img src="docs/shop.png" alt="Storefront with products" width="280" /> | <img src="docs/delivery.png" alt="Bot delivers the product in chat" width="280" /> |
+
+**On-chain proof** — each payment carries an order tag in its `text_comment`, so the bot knows *who* paid for *what*, trusting the blockchain rather than the frontend:
+
+<p align="center">
+  <img src="docs/onchain-proof.png" alt="Payment on-chain with order tag" width="560" />
+</p>
+
+> 💡 Live demo of the storefront (no wallet needed): add `?demo=1` to the app URL.
+
+---
+
 ## ✨ What it does
 
 - **Opens inside Telegram** as a Mini App (no install, 950M+ potential users)

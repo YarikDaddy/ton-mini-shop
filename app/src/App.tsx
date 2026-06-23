@@ -16,10 +16,21 @@ function App() {
 
   const walletAddress = useTonAddress()
   const wallet = useTonWallet()
-  const isConnected = Boolean(walletAddress)
+
+  // Демо-режим (?demo=1): рисуем магазин «как будто кошелёк уже подключён»,
+  // без реального TON Connect. Зачем: чтобы зритель/клиент по ссылке сразу видел
+  // товары, а не пустой экран «подключи кошелёк». Покупка в демо ничего не шлёт.
+  // ?demo=paid — сразу показать финальный экран «оплачено» (для скринов/витрины).
+  const demoParam = new URLSearchParams(window.location.search).get('demo')
+  const isDemo = demoParam !== null
+  const isConnected = Boolean(walletAddress) || isDemo
 
   const [tonConnectUI] = useTonConnectUI()
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState(
+    demoParam === 'paid'
+      ? '✅ Оплачено: «E-book: TON for beginners». Товар придёт в этот бот — проверь чат с ним. 📩'
+      : '',
+  )
   // id товара, который сейчас оплачивается (или null) — чтобы блокировать кнопки
   const [pendingId, setPendingId] = useState<string | null>(null)
 
@@ -33,6 +44,17 @@ function App() {
   async function buy(product: Product) {
     setStatus(`⏳ Оплата «${product.name}»…`)
     setPendingId(product.id) // блокируем кнопки на время оплаты
+
+    // В демо-режиме реальной транзакции нет — имитируем успешную оплату,
+    // чтобы показать финальное состояние «оплачено → товар выдаст бот».
+    if (isDemo) {
+      setTimeout(() => {
+        setStatus(`✅ Оплачено: «${product.name}». Товар придёт в этот бот — проверь чат с ним. 📩`)
+        setPendingId(null)
+      }, 900)
+      return
+    }
+
     try {
       // Метка заказа: что купили + кому выдать (Telegram ID покупателя).
       // По ней бот на 5c поймёт заказ, читая комментарий из блокчейна.
@@ -76,22 +98,22 @@ function App() {
   return (
     <main className="screen">
       <h1 className="title">TON Mini-Shop</h1>
-      <p className="subtitle">Этап 4 — магазин</p>
+      <p className="subtitle">Цифровые товары · оплата в TON</p>
 
-      <div className={`badge ${insideTelegram ? 'badge--ok' : 'badge--warn'}`}>
-        {insideTelegram ? '✅ Внутри Telegram' : '🌐 Браузер'}
+      <div className={`badge ${isDemo || insideTelegram ? 'badge--ok' : 'badge--warn'}`}>
+        {isDemo ? '🎬 Демо' : insideTelegram ? '✅ Внутри Telegram' : '🌐 Браузер'}
       </div>
 
-      <TonConnectButton />
+      {!isDemo && <TonConnectButton />}
 
       {!isConnected ? (
         <p className="hint">Подключи кошелёк, чтобы покупать.</p>
       ) : (
         <>
           <div className="card">
-            <Row label="Кошелёк" value={wallet?.device.appName} />
-            <Row label="Адрес" value={shortAddress(walletAddress)} />
-            <Row label="Сеть" value={connectedNetwork} />
+            <Row label="Кошелёк" value={isDemo ? 'Tonkeeper' : wallet?.device.appName} />
+            <Row label="Адрес" value={isDemo ? 'EQAb...x7Qd' : shortAddress(walletAddress)} />
+            <Row label="Сеть" value={isDemo ? 'mainnet' : connectedNetwork} />
           </div>
 
           {/* Рисуем карточку под каждый товар из массива PRODUCTS */}
@@ -111,7 +133,7 @@ function App() {
         </>
       )}
 
-      <p className="footnote">Дальше (Этап 5): бот проверяет оплату on-chain и выдаёт товар.</p>
+      <p className="footnote">Оплата проверяется on-chain — бот выдаёт товар автоматически.</p>
     </main>
   )
 }
