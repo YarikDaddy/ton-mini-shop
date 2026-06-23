@@ -36,10 +36,12 @@ Browse the catalog → pay in TON → the order is verified **on-chain** and the
 - **Connects a TON wallet** via TON Connect (Tonkeeper & others)
 - **Accepts payments** — each product has its own price; the user confirms in their wallet
 - **Tags each order on-chain** with a comment (`product + buyer`) so payments are identifiable
-- **Verifies payment on-chain** — the bot trusts the blockchain, not the frontend
+- **Verifies payment on-chain** — the backend trusts the blockchain, not the frontend
 - **Auto-delivers** the product to the buyer in their Telegram chat
 
 ## 🧩 How it works
+
+Fully **serverless** — no always-on process. Payment is verified *on demand* right after the user pays:
 
 ```
 Customer (Telegram Mini App)
@@ -48,53 +50,65 @@ Customer (Telegram Mini App)
         ▼
    TON blockchain  ──  payment carries an order tag:  o:<productId>:<telegramUserId>
         ▲
-        │  3. Bot polls incoming transactions (tonapi.io, every 10s)
-        │  4. Reads the comment, checks the amount
-        │  5. Delivers the product to the buyer
-   Bot backend (grammY, Node)
+        │  3. App calls  POST /api/verify   (Vercel Serverless Function)
+        │  4. Function reads the payment via tonapi.io, checks tag + amount
+        │  5. Delivers the product to the buyer via Telegram Bot API
+   Serverless backend (Vercel Functions)
 ```
 
-Two safeguards in the bot:
-- **No double delivery** — processed transaction hashes are remembered.
-- **No delivery for old payments** — only transactions received after startup are honored.
+Why on-demand instead of polling: serverless has no persistent process, and it means delivery works for **any** customer who opens the link — nothing has to be kept running.
+
+Safeguards:
+- **Trusts the chain, not the client** — delivery only happens if a matching payment (exact order tag + sufficient amount) is found on-chain.
+- **No stale deliveries** — only payments within a recent time window are honored. *(For high order volume, add per-tx-hash dedup in Vercel KV / Upstash.)*
 
 ## 🗂 Project structure
 
 ```
 ton-mini-shop/
-├── app/        # Telegram Mini App frontend (React + Vite + TS)
-│   └── src/
-│       ├── App.tsx        # UI, wallet connect, payment with order tag
-│       └── products.ts    # catalog (data-driven)
-└── bot/        # Bot backend (grammY)
-    ├── index.js           # /start + on-chain payment poller & delivery
-    └── products.js        # catalog (id, price, delivered content)
+├── app/                     # Telegram Mini App (React + Vite + TS) + serverless API
+│   ├── src/
+│   │   ├── App.tsx          # UI, wallet connect, payment, polls /api/verify
+│   │   └── products.ts      # catalog (UI)
+│   ├── api/
+│   │   ├── verify.js        # verify payment on-chain → deliver product
+│   │   └── telegram.js      # Telegram webhook (/start)
+│   └── lib/catalog.js       # server-side catalog (price + delivered content)
+└── bot/                     # legacy standalone poller (local dev / non-serverless host)
 ```
 
-## 🚀 Run locally
+## 🚀 Run & deploy
 
-**Frontend**
+**Frontend (local)**
 ```bash
 cd app
 npm install
-npm run dev        # local dev
-npm run build      # production build
+npm run dev        # local dev (note: /api/* functions run only on Vercel)
+npm run build
 ```
-Deploy the `app/` folder to any static host (e.g. Vercel) and set the URL as your bot's Menu Button in @BotFather.
 
-**Bot**
+**Deploy to Vercel** (frontend + `/api` functions in one project)
 ```bash
-cd bot
-npm install
-cp .env.example .env      # then fill BOT_TOKEN and MERCHANT_ADDRESS
-npm start
+cd app
+vercel --prod
+# set secrets once (used by the functions, never sent to the browser):
+vercel env add BOT_TOKEN production
+vercel env add MERCHANT_ADDRESS production
 ```
+
+**Point Telegram at the webhook** (so `/start` works), once:
+```bash
+curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+  --data-urlencode "url=https://<your-app>.vercel.app/api/telegram"
+```
+Also set the app URL as the bot's Menu Button in @BotFather.
 
 ## 🔐 Notes
 
-- The bot token lives only in `bot/.env` (git-ignored) — never in the frontend.
+- Secrets (`BOT_TOKEN`, `MERCHANT_ADDRESS`) live only in Vercel env / `bot/.env` (git-ignored) — never in the frontend bundle.
 - TON Connect never exposes the user's private keys; payments are signed inside the wallet.
 - Tested live on mainnet with micro-amounts.
+- `bot/` is the original always-on poller. It uses long-polling, so it **cannot run while the Telegram webhook is set** — delete the webhook first (`deleteWebhook`) if you want to use it instead.
 
 ## 👤 Author
 

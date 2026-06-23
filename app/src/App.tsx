@@ -82,11 +82,21 @@ function App() {
           },
         ],
       })
-      // Подсказка после оплаты: товар выдаёт бот. Без Telegram (userId=0) не выйдет.
-      const tail = userId
-        ? 'Товар придёт в этот бот — проверь чат с ним. 📩'
-        : '⚠️ Открой магазин через Telegram, иначе бот не сможет выдать товар.'
-      setStatus(`✅ Оплачено: «${product.name}». ${tail}`)
+      // Платёж ушёл. Без Telegram (userId=0) бот не сможет написать первым.
+      if (!userId) {
+        setStatus(`✅ Оплачено: «${product.name}». ⚠️ Открой магазин через Telegram, чтобы бот выдал товар.`)
+        return
+      }
+
+      // Просим бэкенд проверить оплату on-chain и выдать товар. Платёж попадает
+      // в сеть за несколько секунд, поэтому опрашиваем /api/verify с повтором.
+      setStatus(`✅ Оплачено: «${product.name}». Проверяю платёж и выдаю товар…`)
+      const delivered = await pollVerify(product.id, userId)
+      setStatus(
+        delivered
+          ? `🎁 Готово! «${product.name}» отправлен в чат с ботом. 📩`
+          : `✅ Оплачено: «${product.name}». Бот выдаст товар, как только платёж попадёт в сеть — проверь чат. 📩`,
+      )
     } catch (e) {
       const err = e as Error
       setStatus(`❌ Не прошло: ${err.message || err.name || 'неизвестная ошибка'}`)
@@ -170,6 +180,26 @@ function ProductCard({
 // 1 TON = 1_000_000_000 нанотон. Кошелёк принимает сумму ТОЛЬКО в нанотонах, строкой.
 function tonToNano(ton: number): string {
   return BigInt(Math.round(ton * 1e9)).toString()
+}
+
+// Опрашивает serverless-функцию /api/verify, пока она не подтвердит выдачу товара.
+// Платёж появляется в блокчейне за несколько секунд → даём до ~8 попыток по 3.5с.
+async function pollVerify(productId: string, userId: number): Promise<boolean> {
+  for (let i = 0; i < 8; i++) {
+    try {
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ productId, userId }),
+      })
+      const data = await res.json()
+      if (data.delivered) return true
+    } catch {
+      // сеть моргнула — просто пробуем на следующей итерации
+    }
+    await new Promise((r) => setTimeout(r, 3500))
+  }
+  return false
 }
 
 // Укорачиваем адрес для вывода: EQAb...x7Qd
